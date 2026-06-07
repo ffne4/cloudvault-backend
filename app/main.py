@@ -16,7 +16,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://your-netlify-site.netlify.app"  # Replace with your actual Netlify URL
+        "https://cloudvault12.netlify.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
