@@ -45,11 +45,11 @@ def upload_file(
     user = get_user_from_token(authorization, db)
 
     result = cloudinary.uploader.upload(
-        file.file,
-        resource_type="auto",
-        folder="cloudvault"
-    )
-
+    file.file,
+    resource_type="auto",
+    folder="cloudvault",
+    access_mode="public"
+)
     new_file = File(
         user_id=user.id,
         folder_id=folder_id,
