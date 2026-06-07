@@ -29,6 +29,15 @@ def get_user_from_token(authorization: str, db: Session):
         raise HTTPException(status_code=401, detail="Invalid token")
     return user
 
+def get_resource_type(content_type: str) -> str:
+    if not content_type:
+        return "raw"
+    if content_type.startswith("image/"):
+        return "image"
+    if content_type.startswith("video/"):
+        return "video"
+    return "raw"
+
 class RenameSchema(BaseModel):
     filename: str
 
@@ -44,12 +53,16 @@ def upload_file(
 ):
     user = get_user_from_token(authorization, db)
 
+    content_type = file.content_type or ""
+    resource_type = get_resource_type(content_type)
+
     result = cloudinary.uploader.upload(
-    file.file,
-    resource_type="auto",
-    folder="cloudvault",
-    access_mode="public"
-)
+        file.file,
+        resource_type=resource_type,
+        folder="cloudvault",
+        access_mode="public"
+    )
+
     new_file = File(
         user_id=user.id,
         folder_id=folder_id,
@@ -60,7 +73,7 @@ def upload_file(
         cloudinary_public_id=result["public_id"]
     )
     db.add(new_file)
-    user.storage_used += file.size
+    user.storage_used = (user.storage_used or 0) + file.size
     db.commit()
     db.refresh(new_file)
 
@@ -159,8 +172,18 @@ def delete_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    cloudinary.uploader.destroy(file.cloudinary_public_id, resource_type="auto")
-    user.storage_used -= file.file_size
+    for resource_type in ["image", "video", "raw", "auto"]:
+        try:
+            result = cloudinary.uploader.destroy(
+                file.cloudinary_public_id,
+                resource_type=resource_type
+            )
+            if result.get("result") == "ok":
+                break
+        except:
+            continue
+
+    user.storage_used = max(0, (user.storage_used or 0) - file.file_size)
     db.delete(file)
     db.commit()
     return {"message": "File deleted successfully"}

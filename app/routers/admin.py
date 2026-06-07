@@ -27,11 +27,7 @@ def get_system_stats(
     total_public_files = db.query(File).filter(File.is_public == True).count()
     total_shared_links = db.query(SharedLink).count()
     total_bookmarks = db.query(Bookmark).count()
-    total_storage = db.query(User).with_entities(
-        db.query(User.storage_used).scalar_subquery()
-    ).all()
 
-    # Sum all storage
     all_users = db.query(User).all()
     total_storage_used = sum(u.storage_used or 0 for u in all_users)
 
@@ -104,13 +100,18 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Delete all their files from Cloudinary
     files = db.query(File).filter(File.user_id == user_id).all()
     for file in files:
-        try:
-            cloudinary.uploader.destroy(file.cloudinary_public_id, resource_type="auto")
-        except:
-            pass
+        for resource_type in ["image", "video", "raw", "auto"]:
+            try:
+                result = cloudinary.uploader.destroy(
+                    file.cloudinary_public_id,
+                    resource_type=resource_type
+                )
+                if result.get("result") == "ok":
+                    break
+            except:
+                continue
 
     db.delete(user)
     db.commit()
@@ -127,14 +128,20 @@ def delete_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    try:
-        cloudinary.uploader.destroy(file.cloudinary_public_id, resource_type="auto")
-    except:
-        pass
+    for resource_type in ["image", "video", "raw", "auto"]:
+        try:
+            result = cloudinary.uploader.destroy(
+                file.cloudinary_public_id,
+                resource_type=resource_type
+            )
+            if result.get("result") == "ok":
+                break
+        except:
+            continue
 
     owner = db.query(User).filter(User.id == file.user_id).first()
     if owner:
-        owner.storage_used -= file.file_size
+        owner.storage_used = max(0, (owner.storage_used or 0) - file.file_size)
 
     db.delete(file)
     db.commit()
