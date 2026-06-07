@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 import cloudinary
 import cloudinary.uploader
+import cloudinary.utils
 from dotenv import load_dotenv
 import os
 
@@ -34,9 +35,28 @@ def get_resource_type(content_type: str) -> str:
         return "raw"
     if content_type.startswith("image/"):
         return "image"
-    if content_type.startswith("video/"):
+    if content_type.startswith("video/") or content_type.startswith("audio/"):
         return "video"
     return "raw"
+
+def get_view_url(cloudinary_url: str, content_type: str, filename: str) -> str:
+    """Generate a proper viewing URL for different file types"""
+    if not content_type:
+        return cloudinary_url
+    # Images and videos display fine as-is
+    if content_type.startswith("image/") or content_type.startswith("video/"):
+        return cloudinary_url
+    # For PDFs and documents use Google Docs viewer
+    encoded_url = cloudinary_url.replace(":", "%3A").replace("/", "%2F")
+    if content_type.includes("pdf") if hasattr(content_type, 'includes') else "pdf" in content_type:
+        return f"https://docs.google.com/viewer?url={cloudinary_url}&embedded=true"
+    if any(x in content_type for x in ["word", "document", "msword", "officedocument.word"]):
+        return f"https://docs.google.com/viewer?url={cloudinary_url}&embedded=true"
+    if any(x in content_type for x in ["powerpoint", "presentation", "officedocument.presentation"]):
+        return f"https://docs.google.com/viewer?url={cloudinary_url}&embedded=true"
+    if any(x in content_type for x in ["excel", "spreadsheet", "officedocument.sheet"]):
+        return f"https://docs.google.com/viewer?url={cloudinary_url}&embedded=true"
+    return cloudinary_url
 
 class RenameSchema(BaseModel):
     filename: str
@@ -56,12 +76,17 @@ def upload_file(
     content_type = file.content_type or ""
     resource_type = get_resource_type(content_type)
 
-    result = cloudinary.uploader.upload(
-        file.file,
-        resource_type=resource_type,
-        folder="cloudvault",
-        access_mode="public"
-    )
+    try:
+        result = cloudinary.uploader.upload(
+            file.file,
+            resource_type=resource_type,
+            folder="cloudvault",
+            access_mode="public",
+            use_filename=True,
+            unique_filename=True
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
     new_file = File(
         user_id=user.id,
