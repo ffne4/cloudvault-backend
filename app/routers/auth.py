@@ -216,15 +216,3 @@ def delete_account(
     db.delete(user)
     db.commit()
     return {"message": "Account deleted successfully"}
-
-@router.post("/make-admin")
-def make_admin(
-    email: str,
-    db: Session = Depends(get_db)
-):
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.role = "admin"
-    db.commit()
-    return {"message": f"{user.name} is now admin"}
